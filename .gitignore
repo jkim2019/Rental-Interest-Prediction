@@ -1,3 +1,6 @@
 **/data
 *.csv
 *.json
+**/.idea
+*.xml
+*.iml
