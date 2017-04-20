@@ -1,6 +1,6 @@
 import numpy as np  # linear algebra
 import pandas as pd  # data processing, CSV file I/O (e.g. pd.read_csv)
-from scipy import stats, optimize
+from scipy import optimize
 import random
 import datetime as dt
 
@@ -9,11 +9,11 @@ DESIRED_WIDTH = 600
 pd.set_option('display.width', DESIRED_WIDTH)
 
 # set number of hidden layer units & classification labels
-HIDDEN_LAYER_SIZE = 15
+HIDDEN_LAYER_SIZE = 4
 NUM_LABELS = 3
 
 # set True to create new Test/Train sets
-REORGANIZE_SETS = True
+REORGANIZE_SETS = False
 
 # set ratio of Test/Train sets. TEST_RATIO = x, Train = (1-x)
 TEST_RATIO = 0.1
@@ -35,7 +35,7 @@ def sigmoid_gradient(vector):
     :param vector: input vector, type ndarray
     :return: gradient of sigmoid function at vector
     """
-    np.multiply(sigmoid(vector), (1 - sigmoid(vector)))
+    return np.multiply(sigmoid(vector), (1 - sigmoid(vector)))
 
 
 def forward_propagation(X, thetas):
@@ -51,10 +51,10 @@ def forward_propagation(X, thetas):
     theta_two = np.reshape(thetas[HIDDEN_LAYER_SIZE * (n + 1):], (NUM_LABELS, HIDDEN_LAYER_SIZE + 1))
 
     # forward propagation
-    alpha_one = np.insert(X, 0, values=np.ones((m, 1)), axis=1)
-    z_two = alpha_one * theta_one.T
+    alpha_one = np.insert(X, 0, values=np.ones(m), axis=1)
+    z_two = np.matmul(alpha_one, theta_one.T)
     alpha_two = np.insert(sigmoid(z_two), 0, values=np.ones(m), axis=1)  # take sigmoid(z_two) and add bias column
-    z_three = alpha_two * theta_two.T
+    z_three = np.matmul(alpha_two, theta_two.T)
     h = sigmoid(z_three)
 
     return z_two, alpha_two, z_three, h
@@ -115,8 +115,8 @@ def back_propagate(thetas, X, y, lambda_value, hl_size, num_l):
     m = dim[0]  # m: length
     n = dim[1]  # n: width
 
-    theta_one = np.reshape(thetas[: hl_size * n], (hl_size, n))
-    theta_two = np.reshape(thetas[hl_size * n:], (num_l, hl_size + 1))
+    theta_one = np.reshape(thetas[: hl_size * (n + 1)], (hl_size, n + 1))
+    theta_two = np.reshape(thetas[hl_size * (n + 1):], (num_l, hl_size + 1))
 
     # initializations
     theta_one_grad = np.zeros(theta_one.shape)
@@ -164,15 +164,15 @@ def back_propagate(thetas, X, y, lambda_value, hl_size, num_l):
         d2 = np.multiply(d3 @ theta_two, sigmoid_gradient(z_two_row))
 
         # cumulative gradients
-        theta_one_grad += d2[:, 1:].T @ a1
-        theta_two_grad += d3.T @ a_two_row
+        a_two_row = np.matrix(a_two_row)
+        theta_one_grad += np.matrix(d2)[:, 1:].T @ np.matrix(a1)
+        theta_two_grad += np.matrix(d3).T @ np.matrix(a_two_row)
 
     # divide by example num and regularize gradients
     theta_one_grad = (1 / m) * theta_one_grad + (lambda_value / m) * theta_one_grad
     theta_two_grad = (1 / m) * theta_two_grad + (lambda_value / m) * theta_two_grad
     theta_grads = np.append(theta_one_grad.ravel(), theta_two_grad.ravel())
 
-    print("bp called")
     return total_cost, theta_grads
 
 
@@ -193,15 +193,39 @@ def accuracy(prediction, y):
     """
     :param prediction: m x 1 prediction vector
     :param y: interest level
-    :return: % accuracy
+    :return: accuracy, precision, recall
     """
     dim = prediction.shape
     m = dim[0]
     cur_sum = 0.0
+    true_positives = [0.0, 0.0, 0.0]
+    predicted_as = [0.0, 0.0, 0.0]
+    actually_is = [0.0, 0.0, 0.0]
+    precision = [0.0, 0.0, 0.0]
+    recall = [0.0, 0.0, 0.0]
     for i in range(m):
         if prediction[i] == y[i]:
             cur_sum += 1
-    return cur_sum / float(m)
+
+    for i in range(m):
+        # j represents interest level
+        predicted_as[int(np.around(prediction[i]))] += 1
+        actually_is[int(np.around(y[i]))] += 1
+
+        if int(np.around(prediction[i])) == int(np.around(y[i])):
+            true_positives[int(np.around(prediction[i]))] += 1
+
+    for i in range(3):
+        if predicted_as[i] == 0:
+            precision[i] = None
+        else:
+            precision[i] = true_positives[i] / predicted_as[i]
+        if actually_is[i] == 0:
+            recall[i] = None
+        else:
+            recall[i] = true_positives[i] / actually_is[i]
+
+    return cur_sum / float(m), precision, recall
 
 
 def main():
@@ -257,6 +281,127 @@ def main():
             else:
                 print("ERROR: failed to translate y-value to integer")
 
-        # 1.6 now we can cast train_x and train_y to type float
+        # 1.5 now we can cast train_x and train_y to type float
         train_x = train_x.astype(float)
         train_y = train_y.astype(float)
+
+        # 1.6 normalize values
+        print("performing unity-based normalization")
+        for i in range(0, n):
+            max = np.max(train_x[:, i])
+            min = np.min(train_x[:, i])
+            train_x[:, i] = (train_x[:, i] - min) / (max - min)
+        print("\n\n")
+
+        # 1.7 split training set into training set and test set. randomly selected rows
+        test_example_num = int(TEST_RATIO * m)
+        test_set = np.zeros((test_example_num, n + 1), dtype=np.float)
+        random_rows = random.sample(range(m), test_example_num)
+        random_rows = sorted(random_rows, reverse=True)
+        for i in range(test_example_num):
+            test_set[i] = np.append(train_x[random_rows[i], :], train_y[random_rows[i]])
+            train_y = np.delete(train_y, (random_rows[i]), axis=0)
+            train_x = np.delete(train_x, (random_rows[i]), axis=0)
+        np.save("test_set.npy", test_set)
+        np.save("train_x.npy", train_x)
+        np.save("train_y.npy", train_y)
+
+        print("finished reorganizing sets\n\n")
+
+    else:
+        # otherwise, simply load saved data
+        test_set = np.load("test_set.npy")
+        train_x = np.load("train_x.npy")
+        train_y = np.load("train_y.npy")
+
+    # adjust skewed classes
+    low_count, med_count, high_count = 0, 0, 0
+    equal_x = np.zeros((10000, train_x.shape[1]))
+    equal_y = np.zeros((10000, 1))
+    counter = 0
+
+    while low_count < 4000:
+        if train_y[counter] == 0:
+            equal_x[low_count, :] = train_x[counter, :]
+            equal_y[low_count] = train_y[counter]
+            low_count += 1
+        counter += 1
+    counter = 0
+    while med_count < 3000:
+        if train_y[counter] == 1:
+            equal_x[med_count, :] = train_x[counter, :]
+            equal_y[med_count] = train_y[counter]
+            med_count += 1
+        counter += 1
+    counter = 0
+    while high_count < 3000:
+        if train_y[counter] == 2:
+            equal_x[high_count, :] = train_x[counter, :]
+            equal_y[high_count] = train_y[counter]
+            high_count += 1
+        counter += 1
+    train_x = equal_x
+    train_y = equal_y
+
+    dim = train_x.shape
+    m, n = dim[0], dim[1]   # m: # examples
+                            # n: width, no bias units
+
+    # 2.1 initialize values for nn setup
+    # randomly initialize theta_one and theta_two
+    thetas = (np.random.random(size=HIDDEN_LAYER_SIZE * (n + 1) + NUM_LABELS * (HIDDEN_LAYER_SIZE + 1)) - 0.5)
+    lambda_value = REG_PARAM  # regularization parameter
+
+    # forward propagate once
+    junk_1, junk_2, junk_3, h = forward_propagation(train_x, thetas)
+    first_prediction = predict(h)
+    acc, precision, recall = accuracy(first_prediction, train_y)
+    print("initial accuracy: {0}\ninitial precision: {1}\ninitial recall: {2}".format(acc, precision, recall))
+    print("\n")
+
+    # print("theta one/two dimensions")
+    # print(theta_one.shape)
+    # print(theta_two.shape)
+    # print("\n")
+
+    # 2.2 calculate initial cost
+    args = (train_x, train_y, lambda_value, HIDDEN_LAYER_SIZE, NUM_LABELS)
+    cost = calculate_cost(thetas, train_x, train_y, lambda_value, HIDDEN_LAYER_SIZE, NUM_LABELS)
+    print("cost with initial parameters: {0}".format(cost))
+
+    callback_cost = lambda cur_theta: print(calculate_cost(cur_theta, train_x, train_y, lambda_value, HIDDEN_LAYER_SIZE, NUM_LABELS))
+
+    # using conjugate gradient optimization method to optimize function
+    # jac = True allows algorithm to accept both cost and gradient from back_propagate
+    cg_optimum = optimize.minimize(back_propagate, x0=thetas, args=args, method='CG', jac=True, options={'maxiter': 50}, callback=callback_cost)
+    print(cg_optimum)
+
+    # reshape theta
+    theta_one = np.reshape(cg_optimum.x[0: HIDDEN_LAYER_SIZE * (n + 1)], (HIDDEN_LAYER_SIZE, n + 1))
+    theta_two = np.reshape(cg_optimum.x[HIDDEN_LAYER_SIZE * (n + 1):], (NUM_LABELS, HIDDEN_LAYER_SIZE + 1))
+
+    m, n = test_set.shape
+
+    # perform unity-based normalization on test set
+    for i in range(0, n - 1):
+        max = np.max(test_set[:, i])
+        min = np.min(test_set[:, i])
+        test_set[:, i] = (test_set[:, i] - min) / (max - min)
+
+    # forward propagate one last time
+    thetas = np.append(theta_one.ravel(), theta_two.ravel())
+    junk_1, junk_2, junk_3, h = forward_propagation(test_set[:, 0:n - 1], thetas)
+
+    for i in range(30):
+        print(h[i])
+
+    # test optimized theta values on new set
+    second_prediction = predict(h)
+
+    for i in range(30):
+        print(second_prediction[i])
+
+    acc, precision, recall = accuracy(second_prediction, test_set[:, n - 1])
+    print("final accuracy: {0}\nfinal precision: {1}\nfinal recall: {2}".format(acc, precision, recall))
+
+main()
