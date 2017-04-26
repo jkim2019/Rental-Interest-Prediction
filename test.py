@@ -72,6 +72,19 @@ def calculate_cost(thetas, X, y, lambda_value, hl_size, num_l):
     """
     m, n = X.shape[0], X.shape[1]
 
+    # implement weight contribution
+    low_count, med_count, high_count = 0.0, 0.0, 0.0
+    for i in range(m):
+        if y[i] == 0:
+            low_count += 1
+        elif y[i] == 1:
+            med_count += 1
+        elif y[i] == 2:
+            high_count += 1
+        else:
+            print("something went wrong")
+    low_ratio, med_ratio, high_ratio = low_count / m, med_count / m, high_count / m
+
     # reshape thetas
     theta_one = np.reshape(thetas[: hl_size * (n + 1)], (hl_size, (n + 1)))
     theta_two = np.reshape(thetas[hl_size * (n + 1):], (num_l, hl_size + 1))
@@ -90,7 +103,8 @@ def calculate_cost(thetas, X, y, lambda_value, hl_size, num_l):
     for i in range(m):
         index_cost = (-1) * (np.multiply(y_mat[i, :], np.log(h[i, :])) +
                              np.multiply((1 - y_mat[i, :]), np.log(1 - h[i, :])))
-        cost_vec[i] = np.sum(index_cost)
+        # weigh each index_cost by relative occurrence of each interest level to combat skewed dataset
+        cost_vec[i] = index_cost[0] * low_ratio + index_cost[1] * med_ratio + index_cost[2] * high_ratio
 
     total_cost = np.sum(cost_vec)
     total_cost = (1 / m) * total_cost
@@ -114,6 +128,20 @@ def back_propagate(thetas, X, y, lambda_value, hl_size, num_l):
     dim = X.shape
     m = dim[0]  # m: length
     n = dim[1]  # n: width
+
+    # implement weight contribution
+    low_count, med_count, high_count = 0.0, 0.0, 0.0
+    for i in range(m):
+        if y[i] == 0:
+            low_count += 1
+        elif y[i] == 1:
+            med_count += 1
+        elif y[i] == 2:
+            high_count += 1
+        else:
+            print("something went wrong")
+    low_ratio, med_ratio, high_ratio = low_count / m, med_count / m, high_count / m
+
 
     theta_one = np.reshape(thetas[: hl_size * (n + 1)], (hl_size, n + 1))
     theta_two = np.reshape(thetas[hl_size * (n + 1):], (num_l, hl_size + 1))
@@ -140,7 +168,8 @@ def back_propagate(thetas, X, y, lambda_value, hl_size, num_l):
     for i in range(m):
         index_cost = (-1) * (np.multiply(y_mat[i, :], np.log(h[i, :])) +
                              np.multiply((1 - y_mat[i, :]), np.log(1 - h[i, :])))
-        cost_vec[i] = np.sum(index_cost)
+        # weigh each index_cost by relative occurrence of each interest level to combat skewed dataset
+        cost_vec[i] = index_cost[0] * low_ratio + index_cost[1] * med_ratio + index_cost[2] * high_ratio
 
     total_cost = np.sum(cost_vec)
     total_cost = (1 / m) * total_cost
@@ -281,11 +310,11 @@ def main():
             else:
                 print("ERROR: failed to translate y-value to integer")
 
-        # 1.5 now we can cast train_x and train_y to type float
+        # 1.6 cast train_x and train_y to type float
         train_x = train_x.astype(float)
         train_y = train_y.astype(float)
 
-        # 1.6 normalize values
+        # 1.7 normalize values
         print("performing unity-based normalization")
         for i in range(0, n):
             max = np.max(train_x[:, i])
@@ -293,7 +322,7 @@ def main():
             train_x[:, i] = (train_x[:, i] - min) / (max - min)
         print("\n\n")
 
-        # 1.7 split training set into training set and test set. randomly selected rows
+        # 1.8 split training set into training set and test set. randomly selected rows
         test_example_num = int(TEST_RATIO * m)
         test_set = np.zeros((test_example_num, n + 1), dtype=np.float)
         random_rows = random.sample(range(m), test_example_num)
@@ -313,35 +342,37 @@ def main():
         test_set = np.load("test_set.npy")
         train_x = np.load("train_x.npy")
         train_y = np.load("train_y.npy")
+        np.savetxt("train_x.txt", train_x)
+        np.savetxt("train_y.txt", train_y)
 
     # adjust skewed classes
-    low_count, med_count, high_count = 0, 0, 0
-    equal_x = np.zeros((10000, train_x.shape[1]))
-    equal_y = np.zeros((10000, 1))
-    counter = 0
+    # low_count, med_count, high_count = 0, 0, 0
+    # equal_x = np.zeros((10000, train_x.shape[1]))
+    # equal_y = np.zeros((10000, 1))
+    # counter = 0
 
-    while low_count < 4000:
-        if train_y[counter] == 0:
-            equal_x[low_count, :] = train_x[counter, :]
-            equal_y[low_count] = train_y[counter]
-            low_count += 1
-        counter += 1
-    counter = 0
-    while med_count < 3000:
-        if train_y[counter] == 1:
-            equal_x[med_count, :] = train_x[counter, :]
-            equal_y[med_count] = train_y[counter]
-            med_count += 1
-        counter += 1
-    counter = 0
-    while high_count < 3000:
-        if train_y[counter] == 2:
-            equal_x[high_count, :] = train_x[counter, :]
-            equal_y[high_count] = train_y[counter]
-            high_count += 1
-        counter += 1
-    train_x = equal_x
-    train_y = equal_y
+    # while low_count < 4000:
+    #     if train_y[counter] == 0:
+    #         equal_x[low_count, :] = train_x[counter, :]
+    #         equal_y[low_count] = train_y[counter]
+    #         low_count += 1
+    #     counter += 1
+    # counter = 0
+    # while med_count < 3000:
+    #     if train_y[counter] == 1:
+    #         equal_x[med_count, :] = train_x[counter, :]
+    #         equal_y[med_count] = train_y[counter]
+    #         med_count += 1
+    #     counter += 1
+    # counter = 0
+    # while high_count < 3000:
+    #     if train_y[counter] == 2:
+    #         equal_x[high_count, :] = train_x[counter, :]
+    #         equal_y[high_count] = train_y[counter]
+    #         high_count += 1
+    #     counter += 1
+    # train_x = equal_x
+    # train_y = equal_y
 
     dim = train_x.shape
     m, n = dim[0], dim[1]   # m: # examples
@@ -349,7 +380,7 @@ def main():
 
     # 2.1 initialize values for nn setup
     # randomly initialize theta_one and theta_two
-    thetas = (np.random.random(size=HIDDEN_LAYER_SIZE * (n + 1) + NUM_LABELS * (HIDDEN_LAYER_SIZE + 1)) - 0.5)
+    thetas = (np.random.random(size=HIDDEN_LAYER_SIZE * (n + 1) + NUM_LABELS * (HIDDEN_LAYER_SIZE + 1)) - 0.5) * 8
     lambda_value = REG_PARAM  # regularization parameter
 
     # forward propagate once
@@ -373,7 +404,7 @@ def main():
 
     # using conjugate gradient optimization method to optimize function
     # jac = True allows algorithm to accept both cost and gradient from back_propagate
-    cg_optimum = optimize.minimize(back_propagate, x0=thetas, args=args, method='CG', jac=True, options={'maxiter': 50}, callback=callback_cost)
+    cg_optimum = optimize.minimize(back_propagate, x0=thetas, args=args, method='CG', jac=True, options={'maxiter': 10}, callback=callback_cost)
     print(cg_optimum)
 
     # reshape theta
@@ -390,6 +421,10 @@ def main():
 
     # forward propagate one last time
     thetas = np.append(theta_one.ravel(), theta_two.ravel())
+
+    # save theta parameters
+    np.save("thetas.npy", thetas)
+
     junk_1, junk_2, junk_3, h = forward_propagation(test_set[:, 0:n - 1], thetas)
 
     for i in range(30):

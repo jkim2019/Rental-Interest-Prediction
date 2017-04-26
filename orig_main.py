@@ -3,28 +3,25 @@ import pandas as pd  # data processing, CSV file I/O (e.g. pd.read_csv)
 from scipy import optimize
 import random
 import datetime as dt
-import matplotlib.pyplot as plt
 
 # set console width to meaningfully display data
 DESIRED_WIDTH = 600
 pd.set_option('display.width', DESIRED_WIDTH)
 
 # set number of hidden layer units & classification labels
-HIDDEN_LAYER_SIZE_ONE = 10
-HIDDEN_LAYER_SIZE_TWO = 10
+HIDDEN_LAYER_SIZE_ONE = 4
+HIDDEN_LAYER_SIZE_TWO = 4
 NUM_LABELS = 3
 
 # set True to create new Test/Train sets
-REORGANIZE_SETS = True
+REORGANIZE_SETS = False
 
 # set ratio of Test/Train sets. TEST_RATIO = x, Train = (1-x)
-TEST_RATIO = 0.7
+TEST_RATIO = 0.1
 
 # regularization parameter
 REG_PARAM = 0
 
-# set to true to calculate new theta values
-NEW_THETA = True
 
 def sigmoid(z):
     """
@@ -119,7 +116,7 @@ def calculate_cost(thetas, X, y, lambda_value, hl_one_size, hl_two_size, num_l):
         index_cost = (-1) * (np.multiply(y_mat[i, :], np.log(h[i, :])) +
                              np.multiply((1 - y_mat[i, :]), np.log(1 - h[i, :])))
         # weigh each index_cost by relative occurrence of each interest level to combat skewed dataset
-        cost_vec[i] = index_cost[0] * (1 / low_ratio) + index_cost[1] * (1 / med_ratio) + index_cost[2] * (1 / high_ratio)
+        cost_vec[i] = index_cost[0] * low_ratio + index_cost[1] * med_ratio + index_cost[2] * high_ratio
 
     total_cost = np.sum(cost_vec)
     total_cost = (1 / m) * total_cost
@@ -190,8 +187,8 @@ def back_propagate(thetas, X, y, lambda_value, hl_one_size, hl_two_size, num_l):
         index_cost = (-1) * (np.multiply(y_mat[i, :], np.log(h[i, :])) +
                              np.multiply((1 - y_mat[i, :]), np.log(1 - h[i, :])))
         # weigh each index_cost by relative occurrence of each interest level to combat skewed dataset
-        cost_vec[i] = index_cost[0] * (1 / low_ratio) + index_cost[1] * (1 / med_ratio) + index_cost[2] * (
-        1 / high_ratio)
+        cost_vec[i] = index_cost[0] * low_ratio + index_cost[1] * med_ratio + index_cost[2] * high_ratio
+
     total_cost = np.sum(cost_vec)
     total_cost = (1 / m) * total_cost
     # add regularization
@@ -291,34 +288,6 @@ def accuracy(prediction, y):
     return cur_sum / float(m), precision, recall
 
 
-def remove_outliers(X, y):
-    """
-    :param X: training data
-    :param y: interest level
-    :return: X without outliers in each feature, y with appropriate rows removed 
-    """
-    print("removing outliers\n")
-    m, n = X.shape
-    for i in range(n):
-        j = 0
-        upper_bound = np.percentile(X[:, i], 90)
-        lower_bound = np.percentile(X[:, i], 10)
-
-        while j < m:
-            if X[j, i] > upper_bound:
-                X = np.delete(X, j, axis=0)
-                y = np.delete(y, j, axis=0)
-                m -= 1
-            elif X[j, i] < lower_bound:
-                X = np.delete(X, j, axis=0)
-                y = np.delete(y, j, axis=0)
-                m -= 1
-            else:
-                j += 1
-
-    return X, y
-
-
 def main():
     """
     - this program creates a neural network, trains it on a JSON test set, and uses the trained model to make
@@ -328,7 +297,7 @@ def main():
     """
     if REORGANIZE_SETS:
         # 1.1 read JSON file. uses pandas (pd)
-        print("reading JSON file ... \n")
+        print("reading JSON file ... \n\n")
         trainpd = pd.read_json("data/train.json")
 
         # 1.2 translate JSON into numpy matrix
@@ -376,19 +345,15 @@ def main():
         train_x = train_x.astype(float)
         train_y = train_y.astype(float)
 
-        # 1.6 remove outliers
-        train_x, train_y = remove_outliers(train_x, train_y)
-
-        # 1.6.1 normalize values
+        # 1.6 normalize values
         print("performing unity-based normalization")
         for i in range(0, n):
             max = np.max(train_x[:, i])
             min = np.min(train_x[:, i])
             train_x[:, i] = (train_x[:, i] - min) / (max - min)
-        print("\n")
+        print("\n\n")
 
         # 1.7 split training set into training set and test set. randomly selected rows
-        m, n = train_x.shape
         test_example_num = int(TEST_RATIO * m)
         test_set = np.zeros((test_example_num, n + 1), dtype=np.float)
         random_rows = random.sample(range(m), test_example_num)
@@ -401,7 +366,7 @@ def main():
         np.save("train_x.npy", train_x)
         np.save("train_y.npy", train_y)
 
-        print("finished reorganizing sets\n")
+        print("finished reorganizing sets\n\n")
 
     else:
         # otherwise, simply load saved data
@@ -438,74 +403,55 @@ def main():
     # train_x = equal_x
     # train_y = equal_y
 
-    if NEW_THETA:
-        dim = train_x.shape
-        m, n = dim[0], dim[1]  # m: # examples
-        # n: width, no bias units
 
-        # 2.1 initialize values for nn setup
-        # randomly initialize theta_one and theta_two
-        thetas = (np.random.random(size=HIDDEN_LAYER_SIZE_ONE * (n + 1) + HIDDEN_LAYER_SIZE_TWO *
-                            (HIDDEN_LAYER_SIZE_ONE + 1) + NUM_LABELS * (HIDDEN_LAYER_SIZE_TWO + 1)) - 0.5) * 3
-        lambda_value = REG_PARAM  # regularization parameter
+    dim = train_x.shape
+    m, n = dim[0], dim[1]  # m: # examples
+    # n: width, no bias units
 
-        # forward propagate once - only need hypothesis matrix
-        j1, j2, j3, j4, j5, h = forward_propagation(train_x, thetas)
-        first_prediction = predict(h)
-        acc, precision, recall = accuracy(first_prediction, train_y)
-        print("initial accuracy: {0}\ninitial precision: {1}\ninitial recall: {2}".format(acc, precision, recall))
-        print("\n")
+    # 2.1 initialize values for nn setup
+    # randomly initialize theta_one and theta_two
+    thetas = (np.random.random(size=HIDDEN_LAYER_SIZE_ONE * (n + 1) + HIDDEN_LAYER_SIZE_TWO *
+                        (HIDDEN_LAYER_SIZE_ONE + 1) + NUM_LABELS * (HIDDEN_LAYER_SIZE_TWO + 1)) - 0.5) * 3
+    lambda_value = REG_PARAM  # regularization parameter
 
-        # print("theta one/two dimensions")
-        # print(theta_one.shape)
-        # print(theta_two.shape)
-        # print("\n")
+    # forward propagate once - only need hypothesis matrix
+    j1, j2, j3, j4, j5, h = forward_propagation(train_x, thetas)
+    first_prediction = predict(h)
+    acc, precision, recall = accuracy(first_prediction, train_y)
+    print("initial accuracy: {0}\ninitial precision: {1}\ninitial recall: {2}".format(acc, precision, recall))
+    print("\n")
 
-        # 2.2 calculate initial cost
-        args = (train_x, train_y, lambda_value, HIDDEN_LAYER_SIZE_ONE, HIDDEN_LAYER_SIZE_TWO, NUM_LABELS)
-        cost = calculate_cost(thetas, train_x, train_y, lambda_value,
-                              HIDDEN_LAYER_SIZE_ONE, HIDDEN_LAYER_SIZE_TWO, NUM_LABELS)
-        print("cost with initial parameters: {0}".format(cost))
+    # print("theta one/two dimensions")
+    # print(theta_one.shape)
+    # print(theta_two.shape)
+    # print("\n")
 
-        costs = []
-        def callback_cost(cur_theta):
-            cur_cost = calculate_cost(cur_theta, train_x, train_y, lambda_value, HIDDEN_LAYER_SIZE_ONE,
-                                      HIDDEN_LAYER_SIZE_TWO, NUM_LABELS)
-            print(cur_cost)
-            print("iteration performed")
-            costs.append(cur_cost)
+    # 2.2 calculate initial cost
+    args = (train_x, train_y, lambda_value, HIDDEN_LAYER_SIZE_ONE, HIDDEN_LAYER_SIZE_TWO, NUM_LABELS)
+    cost = calculate_cost(thetas, train_x, train_y, lambda_value,
+                          HIDDEN_LAYER_SIZE_ONE, HIDDEN_LAYER_SIZE_TWO, NUM_LABELS)
+    print("cost with initial parameters: {0}".format(cost))
 
+    callback_cost = lambda cur_theta: print(
+        calculate_cost(cur_theta, train_x, train_y, lambda_value,
+                       HIDDEN_LAYER_SIZE_ONE, HIDDEN_LAYER_SIZE_TWO, NUM_LABELS))
 
-        # using conjugate gradient optimization method to optimize function
-        # jac = True allows algorithm to accept both cost and gradient from back_propagate
-        cg_optimum = optimize.minimize(back_propagate, x0=thetas, args=args, method='CG', jac=True,
-                                       options={'maxiter': 30}, callback=callback_cost)
-        print(cg_optimum)
-        print("\n")
+    # using conjugate gradient optimization method to optimize function
+    # jac = True allows algorithm to accept both cost and gradient from back_propagate
+    cg_optimum = optimize.minimize(back_propagate, x0=thetas, args=args, method='CG', jac=True, options={'maxiter': 10},
+                                   callback=callback_cost)
+    print(cg_optimum)
 
-        print("costs:")
-        iteration = 1
-        for cost in costs:
-            print("   iteration {0}: {1}".format(iteration, cost))
-            iteration += 1
-        plt.plot(costs)
-        plt.ylabel('cost')
-        plt.xlabel('iteration number')
-        print("\n")
+    m, n = test_set.shape
 
-        m, n = test_set.shape
+    # perform unity-based normalization on test set
+    for i in range(0, n - 1):
+        max = np.max(test_set[:, i])
+        min = np.min(test_set[:, i])
+        test_set[:, i] = (test_set[:, i] - min) / (max - min)
 
-        # forward propagate one last time
-        thetas = cg_optimum.x
-
-        # save theta parameters
-        np.save("thetas.npy", thetas)
-
-    else:
-        m, n = test_set.shape
-        thetas = np.load("thetas.npy")
-
-    print("##############   TEST SET RESULTS   ##############")
+    # forward propagate one last time
+    thetas = cg_optimum.x
     j1, j2, j3, j4, j5, h = forward_propagation(test_set[:, 0:n - 1], thetas)
 
     for i in range(30):
@@ -521,24 +467,6 @@ def main():
 
     acc, precision, recall = accuracy(second_prediction, test_set[:, n - 1])
     print("final accuracy: {0}\nfinal precision: {1}\nfinal recall: {2}".format(acc, precision, recall))
-    print("##################################################\n\n")
 
-    print("############   TRAINING SET RESULTS   ############")
-    j1, j2, j3, j4, j5, h = forward_propagation(train_x, thetas)
-
-    for i in range(30):
-        print(h[i])
-
-    print("\n\n")
-
-    # test optimized theta values on new set
-    second_prediction = predict(h)
-
-    for i in range(30):
-        print(second_prediction[i])
-
-    acc, precision, recall = accuracy(second_prediction, train_y)
-    print("final accuracy: {0}\nfinal precision: {1}\nfinal recall: {2}".format(acc, precision, recall))
-    print("##################################################")
 
 main()
