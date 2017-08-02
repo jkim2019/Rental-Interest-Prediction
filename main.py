@@ -10,8 +10,8 @@ DESIRED_WIDTH = 600
 pd.set_option('display.width', DESIRED_WIDTH)
 
 # set number of hidden layer units & classification labels
-HIDDEN_LAYER_SIZE_ONE = 10
-HIDDEN_LAYER_SIZE_TWO = 10
+HIDDEN_LAYER_SIZE_ONE = 7
+HIDDEN_LAYER_SIZE_TWO = 23
 NUM_LABELS = 3
 
 # set True to create new Test/Train sets
